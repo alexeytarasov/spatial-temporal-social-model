@@ -33,6 +33,8 @@ class TestDataLoader(unittest.TestCase):
         except ValueError as e:
             expected_string = "Error in line 2: the line should contain user_id, check-in_id, date, latitude, longitude, venue_id and check-in_message, separated by |"
             self.assertEqual(str(e), expected_string)
+        except:
+            self.fail("Wrong exception was produced")
 
     def test_empty_strings_in_middle(self):
         self.file.write("\n418|2012-07-18 14:43:38|37.6164|-122.386|41059b00f964a520850b1fe3|empty_message")
@@ -43,6 +45,8 @@ class TestDataLoader(unittest.TestCase):
         except ValueError as e:
             expected_string = "Error in line 1: the line should contain user_id, check-in_id, date, latitude, longitude, venue_id and check-in_message, separated by |"
             self.assertEqual(str(e), expected_string)
+        except:
+            self.fail("Wrong exception was produced")
 
     def test_empty_strings_in_end(self):
         self.file.write("418|23|2012-07-18 14:43:38|37.6164|-122.386|41059b00f964a520850b1fe3|empty_message\n ")
@@ -53,6 +57,8 @@ class TestDataLoader(unittest.TestCase):
         except ValueError as e:
             expected_string = "Error in line 2: the line should contain user_id, check-in_id, date, latitude, longitude, venue_id and check-in_message, separated by |"
             self.assertEqual(str(e), expected_string)
+        except:
+            self.fail("Wrong exception was produced")
 
     def test_invalid_date(self):
         self.file.write("418|12|2012-07-18 14:43:38|37.6164|-122.386|41059b00f964a520850b1fe3|empty_message\n418|12|123asd|37.6164|-122.386|41059b00f964a520850b1fe3|empty_message")
@@ -62,6 +68,8 @@ class TestDataLoader(unittest.TestCase):
         except ValueError as e:
             expected_string = 'Error in line 2: invalid format of date, should be YYYY-MM-DD HH:MM:SS'
             self.assertEqual(str(e), expected_string)
+        except:
+            self.fail("Wrong exception was produced")
 
     def test_longitude_not_a_number(self):
         self.file.write("418|12|2012-07-18 14:43:38|37.6164|-122.386|41059b00f964a520850b1fe3|empty_message\n418|12|2012-07-18 12:34:45|45.54|a|41059b00f964a520850b1fe3|empty_message")
@@ -71,6 +79,8 @@ class TestDataLoader(unittest.TestCase):
         except ValueError as e:
             expected_string = 'Error in line 2: longitude should be a float number'
             self.assertEqual(str(e), expected_string)
+        except:
+            self.fail("Wrong exception was produced")
 
     def test_longitude_out_of_bounds(self):
         self.file.write("418|12|2012-07-18 14:43:38|37.6164|-122.386|41059b00f964a520850b1fe3|empty_message\n418|12|2012-07-18 12:34:45|45.5|-190.386|41059b00f964a520850b1fe3|empty_message")
@@ -80,33 +90,41 @@ class TestDataLoader(unittest.TestCase):
         except ValueError as e:
             expected_string = 'Error in line 2: longitude should be between -90 and 90'
             self.assertEqual(str(e), expected_string)
+        except:
+            self.fail("Wrong exception was produced")
 
     def test_latitude_not_a_number(self):
         self.file.write("418|12|2012-07-18 14:43:38|37.6164|-122.386|41059b00f964a520850b1fe3|empty_message\n418|12|2012-07-18 12:34:45|abcd|-122.386|41059b00f964a520850b1fe3|empty_message")
         self.file.seek(0)
         try:
             DataLoader.load_check_ins_from_file(self.file)
-        except Exception as e:
+        except ValueError as e:
             expected_string = 'Error in line 2: latitude should be a float number'
             self.assertEqual(str(e), expected_string)
+        except:
+            self.fail("Wrong exception was produced")
 
     def test_latitude_out_of_bounds(self):
         self.file.write("418|12|2012-07-18 14:43:38|37.6164|-122.386|41059b00f964a520850b1fe3|empty_message\n418|12|2012-07-18 12:34:45|100|-122.386|41059b00f964a520850b1fe3|empty_message")
         self.file.seek(0)
         try:
             DataLoader.load_check_ins_from_file(self.file)
-        except Exception as e:
+        except ValueError as e:
             expected_string = 'Error in line 2: latitude should be between -90 and 90'
             self.assertEqual(str(e), expected_string)
+        except:
+            self.fail("Wrong exception was produced")
 
     def test_invalid_venue(self):
         self.file.write("418|12|2012-07-18 14:43:38|37.6164|-122.386|41059b00f964a520850b1fe3|empty_message\n418|12|2012-07-18 12:34:45|34|-122.386||empty_message")
         self.file.seek(0)
         try:
             DataLoader.load_check_ins_from_file(self.file)
-        except Exception as e:
+        except ValueError as e:
             expected_string = 'Error in line 2: venue_id can not be an empty string'
             self.assertEqual(str(e), expected_string)
+        except:
+            self.fail("Wrong exception was produced")
 
     def test_single_directory_happy_path(self):
         mocker = Mocker()
@@ -162,6 +180,8 @@ class TestDataLoader(unittest.TestCase):
         except ValueError as e:
             expected_string = 'Error processing file file2: check-in with ID 12 has already been encountered for user 418'
             self.assertEqual(expected_string, str(e))
+        except:
+            self.fail("Wrong exception was produced")
         finally:
             mocker.restore()
             mocker.verify()
@@ -187,6 +207,8 @@ class TestDataLoader(unittest.TestCase):
         except ValueError as e:
             expected_string = 'Error processing file file1: check-in with ID 12 has already been encountered for user 418'
             self.assertEqual(expected_string, str(e))
+        except:
+            self.fail("Wrong exception was produced")
         finally:
             mocker.restore()
             mocker.verify()
@@ -205,6 +227,8 @@ class TestDataLoader(unittest.TestCase):
         except ValueError as e:
             expected_string = 'Error: directory some_directory is empty'
             self.assertEqual(expected_string, str(e))
+        except:
+            self.fail("Wrong exception was produced")
         finally:
             mocker.restore()
             mocker.verify()
