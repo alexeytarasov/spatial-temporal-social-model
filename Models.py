@@ -1,14 +1,19 @@
 import datetime
 import numpy as np
+import time
 
 from scipy.cluster.vq import kmeans, vq
+from Utils import Utils
 
 class Model(object):
 
 	"""
+	An abstract class for a model to predict user's location.
+
 	Dependencies:
 
-	-- Scipy 0.10.1
+	-- NumPy 1.6.1
+	-- SciPy 0.10.1
 	"""
 
 	def produce_initial_check_in_assignment(self, check_ins):
@@ -21,22 +26,7 @@ class Model(object):
 		check_ins -- list of check-ins, each of them being a dict with keys check_in_id,
 		date, latitude, longitude, venue_id, check_in_message.
 		"""
-		if not isinstance(check_ins, list):
-			raise ValueError("Error: the input argument is not a valid list!")
-		if len(check_ins) == 0:
-			raise ValueError("Error: the list of check-ins is empty!")
-		if len(check_ins) == 1:
-			raise ValueError("Error: the list should contain at least two check-ins!")
-		for check_in in check_ins:
-			if 'check_in_id' not in check_in:
-				raise ValueError("Error: one of check-ins does not have ID!".format(fields=check_in))
-			if 'latitude' not in check_in:
-				raise ValueError("Error: check-in {id} does not have latitude!".format(id=check_in['check_in_id']))
-			if 'longitude' not in check_in:
-				raise ValueError("Error: check-in {id} does not have longitude!".format(id=check_in['check_in_id']))
-		ids = [x["check_in_id"] for x in check_ins]
-		if len(ids) != len(set(ids)):
-			raise ValueError("Error: some check-ins have same IDs!")
+		Utils.check_userless_check_in_list(check_ins)
 		datapoints = np.array([[x['latitude'], x['longitude']] for x in check_ins])
 		ids = [x['check_in_id'] for x in check_ins]
 		centroids,_ = kmeans(datapoints, 2)
@@ -53,4 +43,35 @@ class Model(object):
 
 
 	def produce_initial_max_likelihood_estimates(self, check_ins_H, check_ins_W):
-		None
+		"""
+		Produces initial estimates of model parameters via maximum likelihood estimation.
+
+		Returns a dict where keys are parameter names and values are parameter values.
+
+		check_ins_H -- list of home check-ins
+		check_ins_W -- list of work check-ins
+		"""
+		if not isinstance(check_ins_H, list):
+			raise ValueError("First argument has to be a list!")
+		if not isinstance(check_ins_W, list):
+			raise ValueError("Second argument has to be a list!")
+		if len(check_ins_H) == 0:
+			raise ValueError("First list has to contain at least one check-in!")
+		if len(check_ins_W) == 0:
+			raise ValueError("Second list has to contain at least one check-in!")
+		Utils.check_userless_check_in_list(check_ins_H)
+		Utils.check_userless_check_in_list(check_ins_W)
+	
+
+class StanfordModel(Model):
+	"""
+	Model from "Friendship and Mobility: User Movement In Location-Based Social Networks" 
+	by E. Cho, S. A. Myers, J. Leskovec. Procs of KDD, 2011.
+	"""
+
+	def produce_initial_max_likelihood_estimates(self, check_ins_H, check_ins_W):
+		super(StanfordModel, self).produce_initial_max_likelihood_estimates(None, None)
+
+
+#model = StanfordModel()
+#model.produce_initial_max_likelihood_estimates(None, None)
