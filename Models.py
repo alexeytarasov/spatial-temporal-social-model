@@ -3,7 +3,7 @@ import numpy as np
 
 from scipy.cluster.vq import kmeans, vq
 
-class Model:
+class Model(object):
 
 	"""
 	Dependencies:
@@ -21,6 +21,12 @@ class Model:
 		check_ins -- list of check-ins, each of them being a dict with keys check_in_id,
 		date, latitude, longitude, venue_id, check_in_message.
 		"""
+		if not isinstance(check_ins, list):
+			raise ValueError("Error: the input argument is not a valid list!")
+		if len(check_ins) == 0:
+			raise ValueError("Error: the list of check-ins is empty!")
+		if len(check_ins) == 1:
+			raise ValueError("Error: the list should contain at least two check-ins!")
 		for check_in in check_ins:
 			if 'check_in_id' not in check_in:
 				raise ValueError("Error: one of check-ins does not have ID!".format(fields=check_in))
@@ -44,3 +50,7 @@ class Model:
 			else:
 				work_check_ins.append(check_in)
 		return home_check_ins, work_check_ins
+
+
+	def produce_initial_max_likelihood_estimates(self, check_ins_H, check_ins_W):
+		None
