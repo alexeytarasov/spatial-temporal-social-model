@@ -1,4 +1,49 @@
+from sklearn import cross_validation
+
+
 class Utils:
+	"""
+	Dependencies:
+
+	-- scikit-learn 0.11
+	"""
+
+	@staticmethod
+	def break_dataset_in_folds(check_ins, folds):
+		result = []
+		if len(check_ins) < folds:
+			raise ValueError("Error: the number of check-ins should be greater or equal then the number of folds!")
+		k_fold = cross_validation.KFold(n=len(check_ins), k=folds, indices=True)
+		for train_indices, test_indices in k_fold:
+			test = [check_ins[x] for x in test_indices]
+			train = [check_ins[x] for x in train_indices]
+			result.append({"train": train, "test": test})
+		return result
+
+
+	@staticmethod
+	def separate_dataset_by_days(check_ins):
+		result = {}
+		day_list = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+		
+		for user in check_ins:
+			try:
+				Utils.check_userless_check_in_list(check_ins[user])
+			except ValueError as e:
+				raise ValueError("Problem in dataset for user {user}: {original_exception}".format(user=user, original_exception=str(e)))
+		
+		for user in check_ins:
+			result[user] = {}
+			for day in day_list:
+				result[user][day] = []
+
+			for check_in in check_ins[user]:
+				timestamp = check_in["date"]
+				day_number = timestamp.date().weekday()
+				result[user][day_list[day_number]].append(check_in)
+
+		return result
+
 
 	@staticmethod
 	def check_check_in_syntax(check_in):

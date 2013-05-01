@@ -177,7 +177,7 @@ class TestDataLoader(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             DataLoader.load_check_ins_from_directory("some_directory")
         self.assertEqual(cm.exception.message, 'Error: directory some_directory is empty')
-        
+
 
 if __name__ == '__main__':
     unittest.main()

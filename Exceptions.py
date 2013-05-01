@@ -1,0 +1,2 @@
+class TooSmallSingularValueError(Exception):
+	None
