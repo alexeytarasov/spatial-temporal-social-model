@@ -274,7 +274,11 @@ class StanfordModel(Model):
 		result["tau_h"] = self.calculate_circular_mean(home_times)
 		result["tau_w"] = self.calculate_circular_mean(work_times)
 		result["sigma_h"] = self.calculate_circular_SD(home_times)
+		if result["sigma_h"] < 10 ** (-4):
+			result["sigma_h"] = 10 ** (-4)
 		result["sigma_w"] = self.calculate_circular_SD(work_times)
+		if result["sigma_w"] < 10 ** (-4):
+			result["sigma_w"] = 10 ** (-4)
 		# Spatial parameters
 		home_latitudes = [x['latitude'] for x in check_ins_H]
 		work_latitudes = [x['latitude'] for x in check_ins_W]
@@ -416,9 +420,10 @@ class StanfordModel(Model):
 			longitude = venue_coordinates[venue]["longitude"]
 			P_temporal_h, P_temporal_w = self.calculate_temporal_probabilities(t)
 			P_spatial_h, P_spatial_w = self.calculate_spatial_probabilities(latitude, longitude)
-			if P_temporal_h > P_temporal_w:
-				venue_probabilities[venue] = P_spatial_h
-			else:
-				venue_probabilities[venue] = P_spatial_w
+			#if P_temporal_h > P_temporal_w:
+			#	venue_probabilities[venue] = P_spatial_h
+			#else:
+			#	venue_probabilities[venue] = P_spatial_w
+			venue_probabilities[venue] = (P_temporal_h * P_spatial_h) + (P_temporal_w * P_spatial_w)
 
 		return max(venue_probabilities.iterkeys(), key=lambda k: venue_probabilities[k])
