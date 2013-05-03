@@ -91,8 +91,8 @@ class Utils:
 			raise ValueError("Error: the input argument is not a valid list!")
 		if len(check_ins) == 0:
 			raise ValueError("Error: the list of check-ins is empty!")
-		if len(check_ins) == 1:
-			raise ValueError("Error: the list should contain at least two check-ins!")
+		#if len(check_ins) == 1:
+		#	raise ValueError("Error: the list should contain at least two check-ins!")
 		for check_in in check_ins:
 			Utils.check_check_in_syntax(check_in)
 		ids = [x["check_in_id"] for x in check_ins]

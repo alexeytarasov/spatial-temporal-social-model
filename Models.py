@@ -20,6 +20,7 @@ class Model(object):
 
 	-- NumPy 1.6.1
 	-- SciPy 0.10.1
+	-- rpy2 2.2.1 + R 2.15.3 + mnormt 1.4-5
 	"""
 
 	def produce_initial_check_in_assignment(self, check_ins):
@@ -132,6 +133,7 @@ class Model(object):
 		return result.tolist()
 
 
+
 	@staticmethod
 	def calculate_circular_SD(values_in_hours):
 		"""
@@ -242,17 +244,25 @@ class StanfordModel(Model):
 		mean -- vector of means for the distribution.
 		covariance_matrix -- covariance matrix for the distribution.
 		"""
+
+		# Check if covariation matrix singular values are OK
+		singular_values = np.linalg.svd(np.array(covariance_matrix))[1].tolist()
+		min_singular_value = singular_values[len(singular_values) - 1]
+		if min_singular_value < 10 ** (-7) or math.isnan(covariance_matrix[0][0]):
+			raise TooSmallSingularValueError()
+
 		robjects.r('library(mnormt)')
-		x_r = robjects.r('x <- c(' + str(x[0]) + ", " + str(x[1]) +')')
-		covariance_matrix_r = "sigma <- matrix(c("
-		covariance_matrix_r += str(covariance_matrix[0][0]) + ", "
-		covariance_matrix_r += str(covariance_matrix[0][1]) + ", "
-		covariance_matrix_r += str(covariance_matrix[1][0]) + ", "
-		covariance_matrix_r += str(covariance_matrix[1][1]) + "), 2, 2)"
-		covariance_matrix_r = robjects.r(covariance_matrix_r)
+		x_r = robjects.r('x <- cbind(' + str(x[0]) + ", " + str(x[1]) +')')
+		covariance_matrix_string = "sigma <- matrix(c("
+		covariance_matrix_string += str(covariance_matrix[0][0]) + ", "
+		covariance_matrix_string += str(covariance_matrix[0][1]) + ", "
+		covariance_matrix_string += str(covariance_matrix[1][0]) + ", "
+		covariance_matrix_string += str(covariance_matrix[1][1]) + "), 2, 2)"
+		covariance_matrix_r = robjects.r(covariance_matrix_string)
 		mean_r = robjects.r('mu <- cbind(' + str(mean[0]) +", " + str(mean[1]) + ')')
 		pmnorm = robjects.r("pmnorm")
-		return pmnorm(x_r, mean_r, covariance_matrix_r)[0]
+		result = pmnorm(x_r, mean_r, covariance_matrix_r)[0]
+		return result
 
 
 	def produce_max_likelihood_estimates(self, check_ins_H, check_ins_W):
@@ -274,6 +284,8 @@ class StanfordModel(Model):
 		result['mju_w'] = [np.mean(work_latitudes), np.mean(work_longitudes)]
 		result['Sigma_h'] = self.calculate_covariation_matrix(check_ins_H)
 		result['Sigma_w'] = self.calculate_covariation_matrix(check_ins_W)
+		#print result['Sigma_h']
+		#print result['Sigma_w']
 		return result
 
 
