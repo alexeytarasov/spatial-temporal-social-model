@@ -4,6 +4,8 @@ import numpy as np
 import random
 import time
 
+from rpy2 import robjects
+from rpy2.robjects.packages import importr
 from scipy.cluster.vq import kmeans, vq
 from scipy.stats import morestats
 from Exceptions import TooSmallSingularValueError
@@ -127,7 +129,7 @@ class Model(object):
 			pairs.append(pair)
 		data_matrix = np.array(pairs).T
 		result = np.cov(data_matrix)
-		return result
+		return result.tolist()
 
 
 	@staticmethod
@@ -228,6 +230,7 @@ class StanfordModel(Model):
 	by E. Cho, S. A. Myers, J. Leskovec. Procs of KDD, 2011.
 	"""
 
+
 	@staticmethod
 	def probability_multivariate_normal(x, mean, covariance_matrix):
 		"""
@@ -239,16 +242,17 @@ class StanfordModel(Model):
 		mean -- vector of means for the distribution.
 		covariance_matrix -- covariance matrix for the distribution.
 		"""
-		cov = covariance_matrix
-		if np.min(np.linalg.svd(cov)[1]) < 10**(-7) or np.linalg.det(cov) == 0:
-			raise TooSmallSingularValueError()
-		det = np.linalg.det(cov)
-		first_multiplier = float(1) / ((2 * math.pi) ** 2 * (det ** 0.5))
-		power = -0.5 * np.dot(np.dot(np.subtract(np.array(x), np.array(mean)), np.linalg.inv(cov)), np.subtract(np.array(x), np.array(mean)))
-		try:
-			return first_multiplier * math.exp(power)
-		except FloatingPointError:
-			return 0
+		robjects.r('library(mnormt)')
+		x_r = robjects.r('x <- c(' + str(x[0]) + ", " + str(x[1]) +')')
+		covariance_matrix_r = "sigma <- matrix(c("
+		covariance_matrix_r += str(covariance_matrix[0][0]) + ", "
+		covariance_matrix_r += str(covariance_matrix[0][1]) + ", "
+		covariance_matrix_r += str(covariance_matrix[1][0]) + ", "
+		covariance_matrix_r += str(covariance_matrix[1][1]) + "), 2, 2)"
+		covariance_matrix_r = robjects.r(covariance_matrix_r)
+		mean_r = robjects.r('mu <- cbind(' + str(mean[0]) +", " + str(mean[1]) + ')')
+		pmnorm = robjects.r("pmnorm")
+		return pmnorm(x_r, mean_r, covariance_matrix_r)[0]
 
 
 	def produce_max_likelihood_estimates(self, check_ins_H, check_ins_W):
