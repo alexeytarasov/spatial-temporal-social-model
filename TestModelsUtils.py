@@ -24,7 +24,7 @@ class TestModel(unittest.TestCase):
 	            {'venue_id': '41059b00f964a520850b1fe3', 'latitude': 35, 'check_in_message': 'empty_message', 'check_in_id': '13', 'longitude': -120.386, 'date': datetime.datetime(2012, 7, 18, 14, 43, 38)}
 	    ]
 	    with self.assertRaises(ValueError) as cm:
-	        self.model.produce_max_likelihood_estimates(check_ins_invalid, check_ins_valid)
+	        self.model.check_max_likelihood_estimates_input(check_ins_invalid, check_ins_valid)
 	    self.assertEqual(cm.exception.message, "Error: some check-ins have same IDs!")
 
 

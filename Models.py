@@ -1,6 +1,7 @@
 import datetime
 import math
 import numpy as np
+import operator
 import random
 import time
 
@@ -49,6 +50,12 @@ class Model(object):
 		return home_check_ins, work_check_ins
 
 
+	def assign_initial_check_in_assignment(self, check_ins):
+		home, work = self.produce_initial_check_in_assignment(check_ins)
+		self.check_ins_h = home
+		self.check_ins_w = work
+
+
 	def produce_max_likelihood_estimates(self, check_ins_H, check_ins_W):
 		"""
 		Produces initial estimates of model parameters via maximum likelihood estimation.
@@ -58,6 +65,11 @@ class Model(object):
 		check_ins_H -- list of home check-ins
 		check_ins_W -- list of work check-ins
 		"""
+		None
+
+
+	@staticmethod
+	def check_max_likelihood_estimates_input(check_ins_H, check_ins_W):
 		if not isinstance(check_ins_H, list):
 			raise ValueError("First argument has to be a list!")
 		if not isinstance(check_ins_W, list):
@@ -129,7 +141,22 @@ class Model(object):
 			pair.append(check_in["longitude"])
 			pairs.append(pair)
 		data_matrix = np.array(pairs).T
-		result = np.cov(data_matrix)
+		try:
+			result = np.cov(data_matrix)
+		except Exception as e:
+			print str(e)
+			print data_matrix
+			exit()
+		singular_values = np.linalg.svd(np.array(result))[1].tolist()
+		min_singular_value = singular_values[len(singular_values) - 1]
+		if min_singular_value < 10 ** (-7):
+			#print data_matrix
+			#print singular_values
+			raise TooSmallSingularValueError()
+		#print data_matrix
+		#print singular_values
+		#print result.tolist()
+		#print("--------")
 		return result.tolist()
 
 
@@ -232,6 +259,9 @@ class StanfordModel(Model):
 	by E. Cho, S. A. Myers, J. Leskovec. Procs of KDD, 2011.
 	"""
 
+	def __init__(self):
+		self.parameters = {}
+
 
 	@staticmethod
 	def probability_multivariate_normal(x, mean, covariance_matrix):
@@ -248,8 +278,8 @@ class StanfordModel(Model):
 		# Check if covariation matrix singular values are OK
 		singular_values = np.linalg.svd(np.array(covariance_matrix))[1].tolist()
 		min_singular_value = singular_values[len(singular_values) - 1]
-		if min_singular_value < 10 ** (-7) or math.isnan(covariance_matrix[0][0]):
-			raise TooSmallSingularValueError()
+		#if min_singular_value < 10 ** (-7) or math.isnan(covariance_matrix[0][0]):
+		#	raise TooSmallSingularValueError()
 
 		robjects.r('library(mnormt)')
 		x_r = robjects.r('x <- cbind(' + str(x[0]) + ", " + str(x[1]) +')')
@@ -266,7 +296,11 @@ class StanfordModel(Model):
 
 
 	def produce_max_likelihood_estimates(self, check_ins_H, check_ins_W):
-		super(StanfordModel, self).produce_max_likelihood_estimates(check_ins_H, check_ins_W)
+		#if len(check_ins_H) < 2 or len(check_ins_W) < 2:
+		#	raise OneCheckInInCluster()
+		#print len(check_ins_H)
+		#print len(check_ins_W)
+		self.check_max_likelihood_estimates_input(check_ins_H, check_ins_W)
 		result = {}
 		home_times = [self.hours_from_midnight(x['date']) for x in check_ins_H]
 		work_times = [self.hours_from_midnight(x['date']) for x in check_ins_W]
@@ -318,12 +352,15 @@ class StanfordModel(Model):
 	def train(self, check_ins, number_of_iterations = 10, number_of_models = 10):
 		models = {}
 		for j in range(0, number_of_models):
-			self.check_ins_h, self.check_ins_w = self.produce_initial_check_in_assignment(check_ins)
+			self.assign_initial_check_in_assignment(check_ins)
 			self.check_ins = self.check_ins_h + self.check_ins_w
 			for i in range(0, number_of_iterations):
 				#print "Iteration {i}".format(i=i)
 				before_h = [x["check_in_id"] for x in self.check_ins_h]
-				self.perform_next_iteration()
+				try:	
+					self.perform_next_iteration()
+				except TooSmallSingularValueError():
+					self.parameters == None
 				if self.parameters == None:
 					break
 				after_h = [x["check_in_id"] for x in self.check_ins_h]
@@ -358,7 +395,22 @@ class StanfordModel(Model):
 
 
 	def perform_next_iteration(self):
-		self.parameters = self.produce_max_likelihood_estimates(self.check_ins_h, self.check_ins_w)
+
+		#print "Start of iteration:"
+		#print [x["check_in_id"] for x in self.check_ins_h]
+		#print [x["check_in_id"] for x in self.check_ins_w]
+
+		if len(self.check_ins_h) == 1 or len(self.check_ins_w) == 1:
+			self.parameters = None
+			return
+
+		if self.parameters == None:
+			self.parameters = {}
+		try:
+			self.parameters.update(self.produce_max_likelihood_estimates(self.check_ins_h, self.check_ins_w))
+		except TooSmallSingularValueError:
+			self.parameters = None
+			return
 		self.parameters["Pc_h"] = len(self.check_ins_h) / float(len(self.check_ins_h) + len(self.check_ins_w))
 		self.parameters["Pc_w"] = len(self.check_ins_h) / float(len(self.check_ins_h) + len(self.check_ins_w))
 		self.P_temporal_H = {}
@@ -392,6 +444,13 @@ class StanfordModel(Model):
 				self.check_ins_h.append(check_in)
 			else:
 				self.check_ins_w.append(check_in)
+
+		#print "-" + str(len(self.check_ins_h))
+		#print "-" + str(len(self.check_ins_w))
+
+		#print "End of iteration:"
+		#print [x["check_in_id"] for x in self.check_ins_h]
+		#print [x["check_in_id"] for x in self.check_ins_w]
 
 		if self.check_ins_h == [] or self.check_ins_w == []:
 			self.parameters = None
@@ -427,3 +486,296 @@ class StanfordModel(Model):
 			venue_probabilities[venue] = (P_temporal_h * P_spatial_h) + (P_temporal_w * P_spatial_w)
 
 		return max(venue_probabilities.iterkeys(), key=lambda k: venue_probabilities[k])
+
+
+class NCGModel(StanfordModel):
+
+
+	def __init__(self, n_values, coordinates):
+		self.n_values = n_values
+		self.coordinates = coordinates
+
+
+	def predict(self, timestamp, check_ins):
+		t = self.hours_from_midnight(timestamp)
+		venue_coordinates = self._get_average_venue_coordinates(check_ins)
+		venue_probabilities = {}
+
+		all_venues = [x["venue_id"] for x in check_ins]
+
+		for venue in venue_coordinates:
+			latitude = venue_coordinates[venue]["latitude"]
+			longitude = venue_coordinates[venue]["longitude"]
+			P_temporal_h, P_temporal_w = self.calculate_temporal_probabilities(t)
+			
+			P_spatial_h = self.p_radiation(self.parameters["central_h"], self.parameters["m_h"], venue, all_venues)
+			P_spatial_w = self.p_radiation(self.parameters["central_w"], self.parameters["m_w"], venue, all_venues)
+
+			venue_probabilities[venue] = (P_temporal_h * P_spatial_h) + (P_temporal_w * P_spatial_w)
+
+		return max(venue_probabilities.iterkeys(), key=lambda k: venue_probabilities[k])
+
+
+	def perform_next_iteration(self):
+		if self.parameters == None:
+			self.parameters = {}
+		self.parameters.update(self.produce_max_likelihood_estimates(self.check_ins_h, self.check_ins_w))
+		self.parameters["Pc_h"] = len(self.check_ins_h) / float(len(self.check_ins_h) + len(self.check_ins_w))
+		self.parameters["Pc_w"] = len(self.check_ins_h) / float(len(self.check_ins_h) + len(self.check_ins_w))
+		
+		venues_h = [x["venue_id"] for x in self.check_ins_h]
+		self.parameters["central_h"] = self.get_central_venue(venues_h, self.parameters["m_h"])
+		venues_w = [x["venue_id"] for x in self.check_ins_w]
+		self.parameters["central_w"] = self.get_central_venue(venues_w, self.parameters["m_w"])
+		all_venues = venues_h + venues_w
+
+		self.parameters["m_h"] = self.get_m(self.parameters["m_h"], self.parameters["central_h"], venues_h)
+		self.parameters["m_w"] = self.get_m(self.parameters["m_w"], self.parameters["central_w"], venues_w)
+
+		# Spatial probabilities
+		self.P_spatial_H = {}
+		self.P_spatial_W = {}
+		for venue in set(all_venues):
+			self.P_spatial_H[venue] = self.p_radiation(self.parameters["central_h"], self.parameters["m_h"], venue, all_venues)
+			self.P_spatial_W[venue] = self.p_radiation(self.parameters["central_w"], self.parameters["m_w"], venue, all_venues)
+		sum_H = np.sum(self.P_spatial_H.values())
+		sum_W = np.sum(self.P_spatial_W.values())
+		for venue in set(all_venues):
+			self.P_spatial_H[venue] /= float(sum_H)
+			self.P_spatial_W[venue] /= float(sum_W)
+
+		# Temporal probabilities
+		self.P_temporal_H = {}
+		self.P_temporal_W = {}
+
+		for venue in set(all_venues):
+			P_temporal_H = 0
+			P_temporal_W = 0
+			check_ins_in_venue = [x for x in self.check_ins if x["venue_id"] == venue]
+			for check_in in check_ins_in_venue:
+				time = self.hours_from_midnight(check_in["date"])
+				h, w = self.calculate_temporal_probabilities(time)
+				P_temporal_H += h
+				P_temporal_W += w
+			self.P_temporal_H[venue] = P_temporal_H / float(len(check_ins_in_venue))
+			self.P_temporal_W[venue] = P_temporal_W / float(len(check_ins_in_venue))
+
+		self.P_total_H = {}
+		self.P_total_W = {}
+		for venue in all_venues:
+			self.P_total_H[venue] = self.P_temporal_H[venue] * self.P_spatial_H[venue]
+			self.P_total_W[venue] = self.P_temporal_W[venue] * self.P_spatial_W[venue]
+		
+		self.check_ins_h = []
+		self.check_ins_w = []
+
+		for check_in in self.check_ins:
+			venue = check_in["venue_id"]
+			home = self.P_total_H[venue]
+			work = self.P_total_W[venue]
+			if home > work:
+				self.check_ins_h.append(check_in)
+			else:
+				self.check_ins_w.append(check_in)
+
+		if self.check_ins_h == [] or self.check_ins_w == []:
+			self.parameters = None
+			return
+
+
+	def assign_initial_check_in_assignment(self, check_ins):
+		super(StanfordModel, self).assign_initial_check_in_assignment(check_ins)
+		self.parameters = {}
+		self.parameters["m_h"] = np.mean([self.n_values[y] for y in [x["venue_id"] for x in self.check_ins_h]])
+		self.parameters["m_w"] = np.mean([self.n_values[y] for y in [x["venue_id"] for x in self.check_ins_w]])
+
+
+	def produce_max_likelihood_estimates(self, check_ins_H, check_ins_W):
+		self.check_max_likelihood_estimates_input(check_ins_H, check_ins_W)
+		result = {}
+		home_times = [self.hours_from_midnight(x['date']) for x in check_ins_H]
+		work_times = [self.hours_from_midnight(x['date']) for x in check_ins_W]
+		# Temporal parameters
+		result["tau_h"] = self.calculate_circular_mean(home_times)
+		result["tau_w"] = self.calculate_circular_mean(work_times)
+		result["sigma_h"] = self.calculate_circular_SD(home_times)
+		if result["sigma_h"] < 10 ** (-4):
+			result["sigma_h"] = 10 ** (-4)
+		result["sigma_w"] = self.calculate_circular_SD(work_times)
+		if result["sigma_w"] < 10 ** (-4):
+			result["sigma_w"] = 10 ** (-4)
+
+		return result
+
+
+	def p_radiation(self, central_venue, m, venue, non_unique_venues):
+		"""
+		Calculate the probability that the user checks in at a particular venue.
+
+		Returns the probability.
+
+		central_venue -- ID of the current central venue.
+		current_m -- current value of m.
+		venue -- venue for which the probability is calculated.
+		all_venues -- list of all venues (only Home or only Work), may contain duplicates.
+		coordinates -- a dict where keys are venues and values are (latitude, longitude) 
+		tuples. Usually, all venues will be in this dict.
+		n_values -- n values for all venues.
+		"""
+		all_venues = set(non_unique_venues)
+		coordinates = self.coordinates
+		n_values = self.n_values
+		distances = self.calculate_distances(coordinates, central_venue, all_venues)
+		r_ij = distances[venue]
+		venues_inside_circle = []
+		for j in all_venues:
+			if j == central_venue:
+				continue
+			if distances[j] <= r_ij:
+				venues_inside_circle.append(j)
+		if venue in venues_inside_circle:
+			venues_inside_circle.remove(venue)
+		if len(venues_inside_circle) > 0:
+			s = np.sum([n_values[i] for i in venues_inside_circle])
+		else:
+			s = 0
+		return float(m * n_values[venue]) / float((m + s) * (m + s + n_values[venue]))
+
+
+	def get_m(self, current_m, central_venue, check_in_venues):
+		"""
+		Get m value via gradient descent optimisation.
+
+		Returns a new m value
+
+		current_m -- current value of m.
+		central_venue -- ID of the current central venue.
+		coordinates -- a dict where keys are venues and values are (latitude, longitude) 
+		tuples. Usually, all venues will be in this dict.
+		n_values -- n values for all venues.
+		check_in_venues -- list of all venues (only Home or only Work), may contain duplicates.
+		"""
+		coordinates = self.coordinates
+		n_values = self.n_values
+		i = central_venue
+		venues = set(check_in_venues)
+
+		sum_n = 0
+		for venue in venues:
+			sum_n += n_values[venue]
+
+		distances = self.calculate_distances(coordinates, i, venues)
+		p = {}
+		s = {}
+		for j in venues:
+			n = n_values[j]
+			r_ij = distances[j]
+			venues_inside_circle = [venue for venue in distances.keys() if distances[venue] <= r_ij]
+			venues_inside_circle.remove(i)
+			if j in venues_inside_circle:
+				venues_inside_circle.remove(j)
+			if len(venues_inside_circle) > 0:
+				s[j] = np.sum([n_values[venue] for venue in venues_inside_circle])
+			else:
+				if i == j:
+					s[j] = 0
+				else:
+					continue
+			p[j] = float(current_m * n) / float((current_m + s[j]) * (current_m + n + s[j]))
+
+		iterations = 100
+		i = 0
+		while i < iterations:
+			i += 1
+			old_m = current_m
+			sti = 0
+			for venue in venues:
+				if venue not in s:
+					continue
+				ti = check_in_venues.count(venue)
+				sti += ti * ((1.0 / (current_m + s[venue])) + (1.0 / float(current_m + n_values[venue] + s[venue])))
+			current_m = float(len(check_in_venues)) / float(sti)
+		return current_m
+
+
+	def get_central_venue(self, all_venues, m):
+		"""
+		Get the central venue in the radiation model.
+
+		Returns the ID of the central venue.
+
+		all_venues -- list of venues, among which the central venue has to be found 
+		(may contain duplicate venues).
+		coordinates -- a dict where keys are venues and values are (latitude, longitude) 
+		tuples. Usually, all venues will be in this dict.
+		n_values -- n values for all venues.
+		m -- current value of m parameter.
+		"""
+		venues = set(all_venues)
+		coordinates = self.coordinates
+		n_values = self.n_values
+		#print("Total venues " + str(len(venues)))
+		log_likelihoods = {}
+		for i in venues:
+			likelihoods_for_j = []
+			distances = NCGModel.calculate_distances(coordinates, i, venues)
+			p = {}
+			s = {}
+			for j in venues:
+				n = n_values[j]
+				r_ij = distances[j]
+				venues_inside_circle = [venue for venue in distances.keys() if distances[venue] <= r_ij]
+				venues_inside_circle.remove(i)
+				if j in venues_inside_circle:
+					venues_inside_circle.remove(j)
+				if len(venues_inside_circle) > 0:
+					s[j] = np.sum([n_values[venue] for venue in venues_inside_circle])
+				else:
+					if i == j:
+						s[j] = 0
+					else:
+						continue
+				p[j] = float(m * n) / float((m + s[j]) * (m + n + s[j]))
+			local_likelihoods = []
+			for venue in all_venues:
+				if venue in s:
+					likelihood = float(m * n_values[venue]) / float((m + s[venue]) * (m + n_values[venue] + s[venue]))
+					local_likelihoods.append(math.log(likelihood))
+			log_likelihoods[i] = np.sum(local_likelihoods)
+		return max(log_likelihoods.iteritems(), key=operator.itemgetter(1))[0]
+
+
+	@staticmethod
+	def calculate_distances(coordinates, source, venues):
+		"""
+		Calculates distances from source venue to venues in venues list.
+
+		Returns a dict where keys are venues from venues list and values are distances,
+		measured in latitude-longitude value terms.
+
+		coordinates -- a dict where keys are venues and values are (latitude, longitude) 
+		tuples. Usually, all venues will be in this dict.
+		source -- a venue, from which distances should be calculated.
+		"""
+		result = {}
+		for venue in venues:
+			result[venue] = NCGModel.calculate_distance(coordinates, source, venue)
+		return result
+
+
+	@staticmethod
+	def calculate_distance(coordinates, i, j):
+		"""
+		Calculates a Euclidian distance between two venues.
+
+		Returns a number representing a distance in latitude-longitude value terms.
+
+		coordinates -- a dict where keys are venues and values are (latitude, longitude) 
+		tuples. Usually, all venues will be in this dict.
+		i, j -- venues, between which the distance is calculated. 
+		"""
+		x_i = float(coordinates[i][0])
+		x_j = float(coordinates[j][0])
+		y_i = float(coordinates[i][1])
+		y_j = float(coordinates[j][1])
+		return math.sqrt(((x_i - x_j) ** 2) + ((y_i - y_j) ** 2))

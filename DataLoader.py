@@ -22,12 +22,12 @@ class DataLoader:
         directory_name -- name of the directory containing files from which to extract check-ins.
         """
         results = {}
-        file_names = glob.glob(directory_name)
+        file_names = glob.glob(directory_name + "/*")
         file_names = [x for x in file_names if not x.startswith(".")]
         if len(file_names) == 0:
             raise ValueError("Error: directory {directory} is empty".format(directory=directory_name))
         for file_name in file_names:
-            result = DataLoader.load_check_ins_from_file(open(file_name))
+            result = DataLoader.load_check_ins_from_file(open(file_name, 'rU'))
             for user in result:
                 for check_in in result[user]:
                     id = check_in["check_in_id"]
