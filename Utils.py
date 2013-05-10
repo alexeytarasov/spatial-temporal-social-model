@@ -1,4 +1,9 @@
+import matplotlib.pyplot as plt
+import os
+
 from sklearn import cross_validation
+
+from DataLoader import *
 
 
 class Utils:
@@ -98,3 +103,23 @@ class Utils:
 		ids = [x["check_in_id"] for x in check_ins]
 		if len(ids) != len(set(ids)):
 			raise ValueError("Error: some check-ins have same IDs!")
+
+	@staticmethod
+	def plot_check_ins(check_ins, directory):
+		if not os.path.isdir(directory):
+			os.mkdir(directory)
+		for user in check_ins:
+			latitudes = []
+			longitudes = []
+			for check_in in check_ins[user]:
+				latitudes.append(check_in["latitude"])
+				longitudes.append(check_in["longitude"])
+			fig = plt.figure()
+			fig.suptitle(user + ", " + str(len(latitudes)))
+			plt.scatter(latitudes, longitudes)
+			plt.savefig(directory + "/" + user + ".png")
+			
+
+if __name__ == "__main__":
+	datasets = DataLoader.load_check_ins_from_directory("top_felix_users")
+	Utils.plot_check_ins(datasets, "check_in_graphs")

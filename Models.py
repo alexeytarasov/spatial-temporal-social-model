@@ -5,10 +5,12 @@ import operator
 import random
 import time
 
+from copy import deepcopy
 from rpy2 import robjects
 from rpy2.robjects.packages import importr
 from scipy.cluster.vq import kmeans, vq
 from scipy.stats import morestats
+
 from Exceptions import TooSmallSingularValueError
 from Utils import Utils
 
@@ -34,7 +36,17 @@ class Model(object):
 		check_ins -- list of check-ins, each of them being a dict with keys check_in_id,
 		date, latitude, longitude, venue_id, check_in_message.
 		"""
-		Utils.check_userless_check_in_list(check_ins)
+		home_check_ins = []
+		work_check_ins = []
+
+		all_check_ins = deepcopy(check_ins)
+		random.shuffle(all_check_ins)
+		home_check_ins = all_check_ins[:len(check_ins) / 2]
+		work_check_ins = all_check_ins[len(check_ins) / 2:]
+
+		return home_check_ins, work_check_ins
+
+		"""Utils.check_userless_check_in_list(check_ins)
 		datapoints = np.array([[x['latitude'], x['longitude']] for x in check_ins])
 		ids = [x['check_in_id'] for x in check_ins]
 		centroids,_ = kmeans(datapoints, 2)
@@ -47,7 +59,7 @@ class Model(object):
 				home_check_ins.append(check_in)
 			else:
 				work_check_ins.append(check_in)
-		return home_check_ins, work_check_ins
+		return home_check_ins, work_check_ins"""
 
 
 	def assign_initial_check_in_assignment(self, check_ins):
@@ -372,10 +384,16 @@ class StanfordModel(Model):
 				models[j]["likelihood"] = self.calculate_likelihood()
 		
 		if len(models) > 0:
-			max_likelihood = np.max([models[x]["likelihood"] for x in models])
-			max_likelihood_models = [models[x]["parameters"] for x in models if models[x]["likelihood"] == max_likelihood]
-			random.shuffle(max_likelihood_models)
-			self.parameters = max_likelihood_models[0]
+			#print models
+			likelihoods = [models[x]["likelihood"] for x in models if not math.isnan(models[x]["likelihood"])]
+			if len(likelihoods) > 0:
+				max_likelihood = np.max(likelihoods)
+				max_likelihood_models = [models[x]["parameters"] for x in models if models[x]["likelihood"] == max_likelihood]
+				random.shuffle(max_likelihood_models)
+				#print("--------")
+				self.parameters = max_likelihood_models[0]
+			else:
+				self.parameters = None
 
 
 	def aggregated_probability(self, check_in):
@@ -540,9 +558,17 @@ class NCGModel(StanfordModel):
 			self.P_spatial_W[venue] = self.p_radiation(self.parameters["central_w"], self.parameters["m_w"], venue, all_venues)
 		sum_H = np.sum(self.P_spatial_H.values())
 		sum_W = np.sum(self.P_spatial_W.values())
+		#print self.P_spatial_H.values()
+		#print self.P_spatial_W.values()
 		for venue in set(all_venues):
-			self.P_spatial_H[venue] /= float(sum_H)
-			self.P_spatial_W[venue] /= float(sum_W)
+			if float(sum_H) == 0:
+				self.P_spatial_H[venue] = 0
+			else:
+				self.P_spatial_H[venue] /= float(sum_H)
+			if float(sum_W) == 0:
+				self.P_spatial_W[venue] = 0
+			else:
+				self.P_spatial_W[venue] /= float(sum_W)
 
 		# Temporal probabilities
 		self.P_temporal_H = {}
