@@ -11,6 +11,24 @@ from Utils import Utils
 
 class DataLoader:
 
+
+    @staticmethod
+    def load_social_network(file):
+        results = {}
+        reader = csv.reader(file, delimiter='|')
+        current_line = 0
+        for connection in reader:
+            user_a = connection[0]
+            user_b = connection[1]
+            if user_a not in results:
+                results[user_a] = []
+            if user_b not in results:
+                results[user_b] = []
+            results[user_a].append(user_b)
+            results[user_b].append(user_a)
+        return results
+
+
     @staticmethod
     def load_check_ins_from_directory(directory_name):
         """

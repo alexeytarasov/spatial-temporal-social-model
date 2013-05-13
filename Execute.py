@@ -6,21 +6,31 @@ from collections import Counter
 
 from DataLoader import DataLoader
 from Exceptions import TooSmallSingularValueError
-from Models import StanfordModel, NCGModel
+from Models import StanfordModel, NCGModel, SocialModelStanford
 from Utils import Utils
 
 
 global_results_stanford = []
 global_results_radiation = []
 
-#datasets = DataLoader.load_check_ins_from_directory("top_brightkite_users")
 datasets = DataLoader.load_check_ins_from_directory("top_felix_users")
 users = datasets.keys()
+"""latitude_sd = []
+longitude_sd = []
+for user in users:
+	checkins = datasets[user]
+	latitude_sd.append(np.std([x["latitude"] for x in checkins]))
+	longitude_sd.append(np.std([x["longitude"] for x in checkins]))
+print np.median(latitude_sd)
+print np.median(longitude_sd)
+exit()"""
+
+network = DataLoader.load_social_network(open("top_felix_users_connections.csv"))
 
 #print users
 #exit()
-users = ["24441491"]
-#users = ['45474206', '276391406', '21913365', '27818171', '40557413', '19836108', '488667514', '94173972', '28668373', '33660680', '292750714', '104665558', '23209554', '549041707', '18488759', '82666753', '133067027', '30235429', '41234692', '29109326', '169585114', '14665537', '54670715', '258576072', '16332709', '83111133', '75911133', '573461782', '563315196', '111258523', '2365991', '24441491', '240102387'] 
+#users = ["24441491"]
+users = ['45474206', '276391406', '21913365', '27818171', '40557413', '19836108', '488667514', '94173972', '28668373', '33660680', '292750714', '104665558', '23209554', '549041707', '18488759', '82666753', '133067027', '30235429', '41234692', '29109326', '169585114', '14665537', '54670715', '258576072', '16332709', '83111133', '75911133', '573461782', '563315196', '111258523', '2365991', '24441491', '240102387'] 
 
 for user in users:
 
@@ -50,10 +60,10 @@ for user in users:
 
 			train = combination['train']
 			test = combination['test'] 
-
 			#---------------------------------------------------------------------------
 			model = StanfordModel()
 			model.train(train, number_of_iterations = 10)
+			SocialModelStanford(model, network[user], datasets)#, 0.2, 0.12872926736, 0.112404529873)
 			if model.parameters != None:
 				correct = 0
 				for check_in in test:
@@ -64,7 +74,7 @@ for user in users:
 						correct += 1
 				results_stanford.append(float(correct)/len(test))
 			#---------------------------------------------------------------------------
-			all_check_ins = train + test
+			"""all_check_ins = train + test
 			all_venues = [x["venue_id"] for x in all_check_ins]
 			n_values = Counter(all_venues)
 			coordinates = {}
@@ -84,7 +94,9 @@ for user in users:
 					if real_venue == predicted_venue:
 						correct += 1
 
-				results_radiation.append(float(correct)/len(test))
+				results_radiation.append(float(correct)/len(test))"""
+
+			results_radiation.append(100)
 			#---------------------------------------------------------------------------
 
 		results_stanford = np.mean(results_stanford)

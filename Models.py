@@ -36,6 +36,8 @@ class Model(object):
 		check_ins -- list of check-ins, each of them being a dict with keys check_in_id,
 		date, latitude, longitude, venue_id, check_in_message.
 		"""
+		Utils.check_userless_check_in_list(check_ins)
+		
 		home_check_ins = []
 		work_check_ins = []
 
@@ -805,3 +807,121 @@ class NCGModel(StanfordModel):
 		y_i = float(coordinates[i][1])
 		y_j = float(coordinates[j][1])
 		return math.sqrt(((x_i - x_j) ** 2) + ((y_i - y_j) ** 2))
+
+
+class SocialModelStanford:
+
+
+	def get_same_day_friend_check_ins(self, date, friends, all_user_check_ins):
+		friend_same_day_check_ins = []
+		for friend in friends:
+			if friend not in all_user_check_ins:
+				continue
+			friend_checkins = all_user_check_ins[friend]
+			for check_in in friend_checkins:
+				friend_date = check_in["date"]
+				if all(getattr(date,x) == getattr(friend_date,x) for x in ['year','month','day']):
+					friend_same_day_check_ins.append(check_in)
+		return friend_same_day_check_ins
+
+
+	def calculate_differences_for_check_ins(self, friend_same_day_check_ins, date, latitude, longitude):
+		time_summed_difference = 0
+		space_summed_difference = 0
+
+		for friend_same_day_check_in in friend_same_day_check_ins:
+			friend_date = friend_same_day_check_in["date"]
+			time_difference = abs((friend_date - date).seconds) / float(60 * 60 * 24)
+			
+			friend_latitude = friend_same_day_check_in["latitude"]
+			latitude_difference = abs(latitude - friend_latitude)
+			friend_longitude = friend_same_day_check_in["longitude"]
+			longitude_difference = abs(longitude - friend_longitude)
+			space_difference = math.sqrt((latitude_difference ** 2) + (longitude_difference ** 2))
+
+			time_summed_difference += time_difference
+			space_summed_difference += space_difference
+
+		return time_summed_difference, space_summed_difference
+
+
+	def __init__(self, model, friends, all_user_check_ins):
+
+		time_summed_differences = {}
+		space_summed_differences = {}
+
+		for check_in in model.check_ins:
+			latitude = check_in["latitude"]
+			longitude = check_in["longitude"]
+			date = check_in["date"]
+
+			friend_same_day_check_ins = self.get_same_day_friend_check_ins(date, friends, all_user_check_ins)
+
+			result = self.calculate_differences_for_check_ins(friend_same_day_check_ins, date, latitude, longitude)
+
+			time_summed_differences[check_in["check_in_id"]] = result[0]
+			space_summed_differences[check_in["check_in_id"]] = result[1]
+			#print check_in
+			#print time_difference
+			#print space_difference
+			#print "------"
+
+		print time_summed_differences
+		print space_summed_differences
+		print "-----"
+
+		"""self.model = model
+		entropies = {}
+		all_check_ins = self.model.check_ins
+		for check_in in all_check_ins:
+			id = check_in["check_in_id"]
+			home = self.model.P_total_H[id]
+			work = self.model.P_total_W[id]
+			entropies[id] = self.calculate_entropy(home, work)
+		sorted_entropies = sorted(entropies.iteritems(), key=operator.itemgetter(1))
+		sorted_entropies.reverse()
+
+		social_check_in_number = int(round(len(sorted_entropies) * threshold))
+		social_check_in_ids = [x[0] for x in sorted_entropies[:social_check_in_number]]
+		social_check_ins = [x for x in all_check_ins if x["check_in_id"] in social_check_in_ids]
+
+		social_check_ins_probabilities = {}
+
+		for social_check_in in social_check_ins:
+			latitude = social_check_in["latitude"]
+			longitude = social_check_in["longitude"]
+			date = social_check_in["date"]
+			friend_same_day_check_ins = []
+			for friend in friends:
+				if friend not in all_user_check_ins:
+					continue
+				friend_checkins = all_user_check_ins[friend]
+				for check_in in friend_checkins:
+					friend_date = check_in["date"]
+					if all(getattr(date,x) == getattr(friend_date,x) for x in ['year','month','day']):
+						friend_same_day_check_ins.append(check_in)
+			for friend_same_day_check_in in friend_same_day_check_ins:
+				friend_date = friend_same_day_check_in["date"]
+				time_difference = abs((friend_date - date).seconds) / float(60 * 60 * 24)
+				
+				friend_latitude = friend_same_day_check_in["latitude"]
+				latitude_difference = abs(latitude - friend_latitude)
+
+				friend_longitude = friend_same_day_check_in["longitude"]
+				longitude_difference = abs(longitude - friend_longitude)
+
+				distance = math.sqrt((latitude_difference ** 2) + (longitude_difference ** 2))
+				sd_distance = math.sqrt((latitude_sd ** 2) + (longitude_sd ** 2))
+				distance /= float(sd_distance)
+				if distance > 1:
+					distance = 1
+
+			social_check_ins_probabilities[social_check_in["check_in_id"]] = time_difference * distance
+
+
+		print social_check_ins_probabilities"""
+
+
+	@staticmethod
+	def calculate_entropy(a, b):
+		return -1 * ((a * math.log(a, 2)) + (b * math.log(b, 2)))

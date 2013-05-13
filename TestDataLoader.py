@@ -110,13 +110,13 @@ class TestDataLoader(unittest.TestCase):
         self.file2.seek(0)
 
         mock_glob = self.mocker.replace('glob.glob')
-        mock_glob("some_directory")
+        mock_glob("some_directory/*")
         self.mocker.result(['.', 'file1', 'file2'])
 
         mock_open = self.mocker.replace('__builtin__.open')
-        mock_open("file1")
+        mock_open("file1", 'rU')
         self.mocker.result(self.file)
-        mock_open("file2")
+        mock_open("file2", 'rU')
         self.mocker.result(self.file2)
 
         self.mocker.replay()
@@ -136,13 +136,13 @@ class TestDataLoader(unittest.TestCase):
         self.file2.seek(0)
 
         mock_glob = self.mocker.replace('glob.glob')
-        mock_glob("some_directory")
+        mock_glob("some_directory/*")
         self.mocker.result(['.', 'file1', 'file2'])
 
         mock_open = self.mocker.replace('__builtin__.open')
-        mock_open("file1")
+        mock_open("file1", 'rU')
         self.mocker.result(self.file)
-        mock_open("file2")
+        mock_open("file2", 'rU')
         self.mocker.result(self.file2)
 
         self.mocker.replay()
@@ -156,11 +156,11 @@ class TestDataLoader(unittest.TestCase):
         self.file.seek(0)
 
         mock_glob = self.mocker.replace('glob.glob')
-        mock_glob("some_directory")
+        mock_glob("some_directory/*")
         self.mocker.result(['.', 'file1'])
 
         mock_open = self.mocker.replace('__builtin__.open')
-        mock_open("file1")
+        mock_open("file1", 'rU')
         self.mocker.result(self.file)
 
         self.mocker.replay()
@@ -171,7 +171,7 @@ class TestDataLoader(unittest.TestCase):
 
     def test_empty_directory(self):
         mock_glob = self.mocker.replace('glob.glob')
-        mock_glob("some_directory")
+        mock_glob("some_directory/*")
         self.mocker.result(['.'])
         self.mocker.replay()
         with self.assertRaises(ValueError) as cm:
