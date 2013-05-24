@@ -1,5 +1,6 @@
 import datetime
 import math
+import networkx as nx
 import numpy as np
 import operator
 import random
@@ -489,7 +490,7 @@ class StanfordModel(Model):
 		return result
 
 
-	def predict(self, timestamp, check_ins):
+	def predict(self, timestamp, check_ins, return_all_probabilities = False):
 		t = self.hours_from_midnight(timestamp)
 		venue_coordinates = self._get_average_venue_coordinates(check_ins)
 		venue_probabilities = {}
@@ -505,6 +506,9 @@ class StanfordModel(Model):
 			#	venue_probabilities[venue] = P_spatial_w
 			venue_probabilities[venue] = (P_temporal_h * P_spatial_h) + (P_temporal_w * P_spatial_w)
 
+		if return_all_probabilities == True:
+			return venue_probabilities
+
 		return max(venue_probabilities.iterkeys(), key=lambda k: venue_probabilities[k])
 
 
@@ -516,7 +520,7 @@ class NCGModel(StanfordModel):
 		self.coordinates = coordinates
 
 
-	def predict(self, timestamp, check_ins):
+	def predict(self, timestamp, check_ins, return_all_probabilities = False):
 		t = self.hours_from_midnight(timestamp)
 		venue_coordinates = self._get_average_venue_coordinates(check_ins)
 		venue_probabilities = {}
@@ -533,7 +537,10 @@ class NCGModel(StanfordModel):
 
 			venue_probabilities[venue] = (P_temporal_h * P_spatial_h) + (P_temporal_w * P_spatial_w)
 
-		return max(venue_probabilities.iterkeys(), key=lambda k: venue_probabilities[k])
+		if return_all_probabilities == True:
+			return venue_probabilities
+		else:
+			return max(venue_probabilities.iterkeys(), key=lambda k: venue_probabilities[k])
 
 
 	def perform_next_iteration(self):
@@ -812,6 +819,18 @@ class NCGModel(StanfordModel):
 class SocialModelStanford:
 
 
+	def _get_average_venue_coordinates(self, check_ins):
+		result = {}
+		all_venues = set([x["venue_id"] for x in check_ins])
+		for venue in all_venues:
+			latitudes = [x["latitude"] for x in check_ins if x["venue_id"] == venue]
+			longitudes = [x["longitude"] for x in check_ins if x["venue_id"] == venue]
+			result[venue] = {}
+			result[venue]["latitude"] = np.median(latitudes)
+			result[venue]["longitude"] = np.median(longitudes)
+		return result
+
+
 	def get_same_day_friend_check_ins(self, date, friends, all_user_check_ins):
 		friend_same_day_check_ins = []
 		for friend in friends:
@@ -831,7 +850,7 @@ class SocialModelStanford:
 
 		for friend_same_day_check_in in friend_same_day_check_ins:
 			friend_date = friend_same_day_check_in["date"]
-			time_difference = abs((friend_date - date).seconds) / float(60 * 60 * 24)
+			time_difference = abs(friend_date - date).seconds / float(60 * 60 * 24)
 			
 			friend_latitude = friend_same_day_check_in["latitude"]
 			latitude_difference = abs(latitude - friend_latitude)
@@ -845,7 +864,37 @@ class SocialModelStanford:
 		return time_summed_difference, space_summed_difference
 
 
-	def __init__(self, model, friends, all_user_check_ins):
+	def get_probabilities(self, friends, all_user_check_ins, date, all_check_ins):
+		result = {}
+		venues = self._get_average_venue_coordinates(all_check_ins)
+		for venue in venues:
+			latitude = venues[venue]["latitude"]
+			longitude = venues[venue]["longitude"]
+			result[venue] = self.get_probability(friends, all_user_check_ins, date, latitude, longitude)
+		return result
+
+
+	def get_probability(self, friends, all_user_check_ins, date, latitude, longitude):
+		if self.max_time_difference == self.min_time_difference or self.max_space_difference == self.min_space_difference:
+			return 0.0
+		
+		check_ins = self.get_same_day_friend_check_ins(date, friends, all_user_check_ins)
+		time_diff, space_diff = self.calculate_differences_for_check_ins(check_ins, date, latitude, longitude)
+		
+		if time_diff - self.min_time_difference < 0:
+			prob_time = 1
+		else:
+			prob_time = 1 - (time_diff - self.min_time_difference) / float(self.max_time_difference - self.min_time_difference)
+		
+		if space_diff - self.min_space_difference < 0:
+			prob_space = 1
+		else:
+			prob_space = 1 - (space_diff - self.min_space_difference) / float(self.max_space_difference - self.min_space_difference)
+
+		return prob_time * prob_space
+
+
+	def fit_model(self, model, friends, all_user_check_ins):
 
 		time_summed_differences = {}
 		space_summed_differences = {}
@@ -866,62 +915,230 @@ class SocialModelStanford:
 			#print space_difference
 			#print "------"
 
-		print time_summed_differences
-		print space_summed_differences
-		print "-----"
+		self.min_time_difference = np.min(time_summed_differences.values())
+		self.max_time_difference = np.max(time_summed_differences.values())
 
-		"""self.model = model
-		entropies = {}
-		all_check_ins = self.model.check_ins
-		for check_in in all_check_ins:
-			id = check_in["check_in_id"]
-			home = self.model.P_total_H[id]
-			work = self.model.P_total_W[id]
-			entropies[id] = self.calculate_entropy(home, work)
-		sorted_entropies = sorted(entropies.iteritems(), key=operator.itemgetter(1))
-		sorted_entropies.reverse()
-
-		social_check_in_number = int(round(len(sorted_entropies) * threshold))
-		social_check_in_ids = [x[0] for x in sorted_entropies[:social_check_in_number]]
-		social_check_ins = [x for x in all_check_ins if x["check_in_id"] in social_check_in_ids]
-
-		social_check_ins_probabilities = {}
-
-		for social_check_in in social_check_ins:
-			latitude = social_check_in["latitude"]
-			longitude = social_check_in["longitude"]
-			date = social_check_in["date"]
-			friend_same_day_check_ins = []
-			for friend in friends:
-				if friend not in all_user_check_ins:
-					continue
-				friend_checkins = all_user_check_ins[friend]
-				for check_in in friend_checkins:
-					friend_date = check_in["date"]
-					if all(getattr(date,x) == getattr(friend_date,x) for x in ['year','month','day']):
-						friend_same_day_check_ins.append(check_in)
-			for friend_same_day_check_in in friend_same_day_check_ins:
-				friend_date = friend_same_day_check_in["date"]
-				time_difference = abs((friend_date - date).seconds) / float(60 * 60 * 24)
-				
-				friend_latitude = friend_same_day_check_in["latitude"]
-				latitude_difference = abs(latitude - friend_latitude)
-
-				friend_longitude = friend_same_day_check_in["longitude"]
-				longitude_difference = abs(longitude - friend_longitude)
-
-				distance = math.sqrt((latitude_difference ** 2) + (longitude_difference ** 2))
-				sd_distance = math.sqrt((latitude_sd ** 2) + (longitude_sd ** 2))
-				distance /= float(sd_distance)
-				if distance > 1:
-					distance = 1
-
-			social_check_ins_probabilities[social_check_in["check_in_id"]] = time_difference * distance
-
-
-		print social_check_ins_probabilities"""
+		self.min_space_difference = np.min(space_summed_differences.values())
+		self.max_space_difference = np.max(space_summed_differences.values())
 
 
 	@staticmethod
 	def calculate_entropy(a, b):
 		return -1 * ((a * math.log(a, 2)) + (b * math.log(b, 2)))
+
+
+class CorrectSocialModelStanford(SocialModelStanford):
+
+	def get_probabilities(self, friends, all_user_check_ins, date, all_check_ins):
+		result = {}
+		venues = self._get_average_venue_coordinates(all_check_ins)
+		for venue in venues:
+			latitude = venues[venue]["latitude"]
+			longitude = venues[venue]["longitude"]
+			result[venue] = self.get_probability(friends, all_user_check_ins, date, latitude, longitude)
+		return result
+
+
+	def calculate_differences_for_check_ins(check_ins, date, latitude, longitude):
+		None
+
+
+	def get_probability(self, friends, all_user_check_ins, date, latitude, longitude):		
+		friend_same_day_check_ins = self.get_same_day_friend_check_ins(date, friends, all_user_check_ins)
+
+		sum = 0
+
+		for check_in in friend_same_day_check_ins:
+			friend_date = check_in["date"]
+			time_difference = abs(friend_date - date).seconds / float(60 * 60 * 24)
+			time_difference = (time_difference - self.min_time_difference) / float(self.max_time_difference - self.min_time_difference) 
+				
+			friend_latitude = check_in["latitude"]
+			latitude_difference = abs(latitude - friend_latitude)
+			friend_longitude = check_in["longitude"]
+			longitude_difference = abs(longitude - friend_longitude)
+			space_difference = math.sqrt((latitude_difference ** 2) + (longitude_difference ** 2))
+			space_difference = (space_difference - self.min_space_difference) / float(self.max_space_difference - self.min_space_difference) 
+
+			sum += time_difference * space_difference
+
+		sum = (sum - self.min_sum) / float(self.max_sum - self.min_sum)
+
+		return sum
+		
+		"""time_diff, space_diff = self.calculate_differences_for_check_ins(check_ins, date, latitude, longitude)
+		
+		if time_diff - self.min_time_difference < 0:
+			prob_time = 1
+		else:
+			prob_time = 1 - (time_diff - self.min_time_difference) / float(self.max_time_difference - self.min_time_difference)
+		
+		if space_diff - self.min_space_difference < 0:
+			prob_space = 1
+		else:
+			prob_space = 1 - (space_diff - self.min_space_difference) / float(self.max_space_difference - self.min_space_difference)
+
+		return prob_time * prob_space"""
+
+
+	def fit_model(self, model, friends, all_user_check_ins):
+
+		time_differences = []
+		space_differences = []
+		sums = []
+
+		for check_in in model.check_ins:
+			latitude = check_in["latitude"]
+			longitude = check_in["longitude"]
+			date = check_in["date"]
+
+			friend_same_day_check_ins = self.get_same_day_friend_check_ins(date, friends, all_user_check_ins)
+
+			sum = 0
+
+			for check_in in friend_same_day_check_ins:
+				friend_date = check_in["date"]
+				time_difference = abs(friend_date - date).seconds / float(60 * 60 * 24)
+				time_differences.append(time_difference)
+				
+				friend_latitude = check_in["latitude"]
+				latitude_difference = abs(latitude - friend_latitude)
+				friend_longitude = check_in["longitude"]
+				longitude_difference = abs(longitude - friend_longitude)
+				space_difference = math.sqrt((latitude_difference ** 2) + (longitude_difference ** 2))
+				space_differences.append(space_difference)
+
+				sum += time_difference * space_difference
+
+			sums.append(sum)
+			
+		self.min_time_difference = np.min(time_differences)
+		self.max_time_difference = np.max(time_differences)
+		if self.min_time_difference == self.max_time_difference:
+			self.min_time_difference = 0
+
+		self.min_space_difference = np.min(space_differences)
+		self.max_space_difference = np.max(space_differences)
+		if self.min_space_difference == self.max_space_difference:
+			self.min_space_difference = 0
+
+		self.min_sum = np.min(sums)
+		self.max_sum = np.max(sums)
+		if self.min_sum == self.max_sum:
+			self.min_sum = 0
+
+		#print self.min_time_difference
+		#print self.max_time_difference
+		#print self.min_space_difference
+		#print self.max_space_difference
+		#print self.min_sum
+		#print self.max_sum
+
+
+class AdvancedSocialModel(SocialModelStanford):
+
+	def __init__(self, all_user_check_ins, network, current_user):
+		G = nx.DiGraph()
+		for user in all_user_check_ins:
+			for check_in in all_user_check_ins[user]:
+				venue = check_in["venue_id"]
+				if user not in G.nodes():
+					G.add_node(user)
+				if venue not in G.nodes():
+					G.add_node(user)
+				if (user, venue) not in G.edges():
+					G.add_edge(user, venue, weight = 1)
+				else:
+					current_weight = G.get_edge_data(user, venue)['weight']
+					G.add_edge(user, venue, weight = current_weight + 1)
+		(hub_scores, authority_scores) = nx.hits(G)
+		self.authority_scores = authority_scores
+		self.user = current_user
+		self.user_check_ins = all_user_check_ins[current_user]
+		self.network = network
+
+		friend_count = {}
+		for user in network:
+			friend_count[user] = len(network[user])
+
+		self.friend_count = friend_count
+
+
+	def get_probabilities(self, friends, all_user_check_ins, date, all_check_ins):
+		result = {}
+		venues = self._get_average_venue_coordinates(all_check_ins)
+		for venue in venues:
+			latitude = venues[venue]["latitude"]
+			longitude = venues[venue]["longitude"]
+			result[venue] = self.get_probability(friends, all_user_check_ins, date, latitude, longitude)
+		return result
+
+
+	def get_probability(self, friends, all_user_check_ins, date, latitude, longitude):
+		friends_influences = {}
+		for friend in self.network[self.user]:
+			friends_influences[friend] = self.friend_count[friend]
+		for friend in friends_influences:
+			friends_influences[friend] = friends_influences[friend] / float(np.max(friends_influences.values()))
+		friend_influence_multipliers = []
+		for friend in friends:
+			if friend not in all_user_check_ins:
+				continue
+			for check_in in all_user_check_ins[friend]:
+				friend_influence_multipliers.append(friends_influences[friend])
+		friend_influence_multiplier = np.mean(friend_influence_multipliers)
+
+		if self.max_time_difference == self.min_time_difference or self.max_space_difference == self.min_space_difference:
+			return 0.0
+		
+		check_ins = self.get_same_day_friend_check_ins(date, friends, all_user_check_ins)
+		time_diff, space_diff = self.calculate_differences_for_check_ins(check_ins, date, latitude, longitude)
+		
+		if time_diff - self.min_time_difference < 0:
+			prob_time = 1
+		else:
+			prob_time = 1 - (time_diff - self.min_time_difference) / float(self.max_time_difference - self.min_time_difference)
+		
+		if space_diff - self.min_space_difference < 0:
+			prob_space = 1
+		else:
+			prob_space = 1 - (space_diff - self.min_space_difference) / float(self.max_space_difference - self.min_space_difference)
+
+		return prob_time * prob_space * friend_influence_multiplier
+
+
+class SimpleSocialModel(SocialModelStanford):
+
+	def __init__(self, all_user_check_ins, friends, user):
+		self.all_user_check_ins = all_user_check_ins
+		self.friends = friends
+		self.user = user
+
+
+	def get_probabilities(self, friends, all_user_check_ins, date, all_check_ins):
+		result = {}
+		venues = self._get_average_venue_coordinates(all_check_ins)
+		for venue in venues:
+			result[venue] = self.count_social_checkins(venue, date)
+		for venue in result:
+			result[venue] /= float(np.max(result.values()))
+		return result
+
+
+	def count_social_checkins(self, venue, date):
+		social_check_ins = 0
+		for friend in self.all_user_check_ins:
+			for check_in in self.all_user_check_ins[friend]:
+				time_distance = abs(date - check_in["date"]).seconds / 60.0 / 60.0
+				if check_in["venue_id"] == venue and time_distance <= 2:
+					social_check_ins += 1
+		return social_check_ins
+
+
+if __name__ == '__main__':
+	check_ins = [{'venue_id': '1', 'latitude': 60, 'check_in_message': 'empty_message', 'check_in_id': '12', 'longitude': 220, 'date': datetime.datetime(2012, 7, 18, 15, 30, 00)},
+                 {'venue_id': '2', 'latitude': 42, 'check_in_message': 'empty_message', 'check_in_id': '14', 'longitude': 22, 'date': datetime.datetime(2012, 7, 18, 15, 15, 00)},
+                 {'venue_id': '2', 'latitude': 70, 'check_in_message': 'empty_message', 'check_in_id': '141', 'longitude': 210, 'date': datetime.datetime(2012, 7, 18, 15, 45, 00)}]
+	model = SocialModelStanford()
+	result = model.calculate_differences_for_check_ins(check_ins, datetime.datetime(2012, 7, 18, 16, 00, 00), 62, 215)
+	print result

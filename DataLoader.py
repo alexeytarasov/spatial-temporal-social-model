@@ -6,7 +6,7 @@ from datetime import datetime
 import glob
 import csv
 
-from Utils import Utils
+from Utils import *
 
 
 class DataLoader:
